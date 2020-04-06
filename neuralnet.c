@@ -149,34 +149,47 @@ while (1){
 	else if (option == 3){
 		double learningRate;
 		int epoch;
+		int batchCount;
 		if(layerCount == 0){
 			puts("Neural Network Uninitialized");
 			continue;
 		}
+
+		
 		gsl_vector* inputVector = gsl_vector_calloc(nodeCountArray[0]);
 		gsl_vector* outputTrainVector = gsl_vector_calloc(nodeCountArray[layerCount]);
+		
+		gsl_vector** batchInput;
+		gsl_vector** batchExpected;
 
-		if (!inputVector || !outputTrainVector){
-			puts("MALLOC ERROR");
-			exit(1);
-		}
+		printf("Enter number of batches: ");
+		scanf("%d",&batchCount);
+		
+		batchInput = malloc(sizeof(gsl_vector*) * batchCount);
+		batchExpected = malloc(sizeof(gsl_vector*)* batchCount);
+		
+		// Recieve Batch Data
+		for (int i = 0; i < batchCount; i++){
+		printf("Batch %d: \n",i+1);
 		puts("Input Training Data: ");
 		int count = 0;
+		batchInput[i] = gsl_vector_calloc(nodeCountArray[0]);
 		while (count < nodeCountArray[0]){
                         double input;
                         scanf("%lf", &input);
-                        gsl_vector_set(inputVector, count,input);
+                        gsl_vector_set(batchInput[i], count,input);
                         count++;
                 }
 		count = 0;
-
+		batchExpected[i] = gsl_vector_calloc(nodeCountArray[layerCount]);
 		puts("Input Expected Data: ");
 		while (count < nodeCountArray[layerCount]){
                         double input;
                         scanf("%lf", &input);
-                        gsl_vector_set(outputTrainVector, count,input);
+                        gsl_vector_set(batchExpected[i], count,input);
                         count++;
                 }
+		}
 		printf("Enter learning rate: ");
 		scanf("%lf",&learningRate);
 		
@@ -184,9 +197,11 @@ while (1){
 		scanf("%d",&epoch);
 		int i = 1;
 		while (i <= epoch){
-			gsl_vector* outputVector = forwardPropagate(inputVector, weightPtrs, a, z, nodeCountArray, layerCount);
-			double MSE = backPropagate(outputVector, outputTrainVector,weightPtrs, a, z, nodeCountArray, learningRate,layerCount);
-			printf("EPOCH: %d, Mean Squared Error: %lf\n",i,MSE);
+			for (int j = 0; j < batchCount; j++){
+				gsl_vector* outputVector = forwardPropagate(batchInput[j], weightPtrs, a, z, nodeCountArray, layerCount);
+				double MSE = backPropagate(outputVector, batchExpected[j],weightPtrs, a, z, nodeCountArray, learningRate,layerCount);
+				printf("EPOCH: %d,BATCH: %d, Mean Squared Error: %lf\n",i,j+1,MSE);
+			}
 		i++;
 		}
 	}
