@@ -9,8 +9,16 @@
 #include <math.h>
 // Helper functions
 
+
+void clear_buffer(FILE* f){
+	 char ch = getc(f);
+                while (!ch){
+                        ch = getc(f);
+                }
+
+}
 double sigmoidI(double v){
-	double x = pow(2.71828, v);
+	double x = pow(M_E, v);
 	return x/(1+x);
 }
 
@@ -20,7 +28,7 @@ double transfer_derivative(double v){;
 gsl_vector* sigmoid(gsl_vector* a, int count){
 	gsl_vector* result = gsl_vector_calloc(count);
 	for (int i = 0; i < count; i++){
-		double x = pow(2.71828,gsl_vector_get(a,i));
+		double x = pow(M_E,gsl_vector_get(a,i));
 		gsl_vector_set(result,i,x/(1+x));
 	}
 	return result;
@@ -53,6 +61,8 @@ puts("AI Menu");
 puts("1. Construct/Reconstruct Neural Network");
 puts("2. Test Data");
 puts("3. Train Data");
+puts("4. Save Data");
+puts("5. Load Data");
 
 int option = -1;
 int created = 0;
@@ -204,6 +214,83 @@ while (1){
 			}
 		i++;
 		}
+	}
+	else if (option == 4){
+		if (layerCount == 0){
+			puts("Uninitialized neural network");
+			continue;
+		}
+
+		char fileName[256];
+		clear_buffer(stdin);
+
+		printf("Enter file name: ");
+		fgets(fileName,256,stdin);
+	
+		char* finalName = strtok(fileName,"\n");
+		FILE* FH = fopen(finalName,"wb");
+
+		// Clear STDIN for proper function of scanf 
+		// Prepend magic number to file
+		
+		fputc('I',FH);
+		fputc('N', FH);
+		fputc('N', FH);
+		fputc('_',FH);
+			
+		puts("Writing to file..");
+		fwrite(&layerCount, sizeof(int), 1, FH);
+		fwrite(nodeCountArray, sizeof(int), 100, FH);
+		
+		int layers = 0;
+		for (int i = 1; i <= layerCount; i++){
+			gsl_matrix_fwrite(FH, weightPtrs[i]);
+		}
+		fclose(FH);
+	}
+	else if (option == 5){
+		
+		char fileName[256];
+                clear_buffer(stdin);
+
+                printf("Enter file name: ");
+                fgets(fileName,256,stdin);
+  
+                char* finalName = strtok(fileName,"\n");
+                FILE* FH = fopen(finalName,"rb");
+	
+		if (!FH){
+			puts("File does not exist");
+			continue;
+		}
+		
+		char magic[4] = {fgetc(FH), fgetc(FH), fgetc(FH), fgetc(FH)};
+		
+		if (magic[0] != 'I' || magic[1] != 'N' || magic[2] != 'N' || magic[3] != '_'){
+			puts("Incorrect magic number");
+			continue;
+		}
+		
+		int prevLayerCount = layerCount;
+		fread(&layerCount, sizeof(int), 1, FH);
+		fread(nodeCountArray,sizeof(int),100,FH);
+		created = 1;	
+
+		for (int i = 1; i <= prevLayerCount; i++){
+			if (weightPtrs[i]){
+				gsl_matrix_free(weightPtrs[i]);
+				weightPtrs[i] = NULL;
+			}
+		}
+		
+		for (int i = 1; i <= layerCount; i++){
+			weightPtrs[i] = gsl_matrix_calloc(nodeCountArray[i], nodeCountArray[i-1]);
+		}
+	
+		for (int i = 1; i <= layerCount; i++){
+			gsl_matrix_fread(FH, weightPtrs[i]);
+		}		
+		fclose(FH); 
 	}
 }
 return 0;
