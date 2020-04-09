@@ -26,12 +26,12 @@ double transfer_derivative(double v){;
 	return v*(1.0-v);
 }
 gsl_vector* sigmoid(gsl_vector* a, int count){
-	gsl_vector* result = gsl_vector_calloc(count);
+	//gsl_vector* result = gsl_vector_calloc(count);
 	for (int i = 0; i < count; i++){
 		double x = pow(M_E,gsl_vector_get(a,i));
-		gsl_vector_set(result,i,x/(1+x));
+		gsl_vector_set(a,i,x/(1+x));
 	}
-	return result;
+	return a;
 }
 
 gsl_vector* RELU(gsl_vector* a, int count){
@@ -58,11 +58,13 @@ gsl_vector* z[100];
 int layerCount = 0;
 puts("AI Menu");
 
+puts("-------------------------------");
 puts("1. Construct/Reconstruct Neural Network");
 puts("2. Test Data");
 puts("3. Train Data");
 puts("4. Save Data");
 puts("5. Load Data");
+puts("-------------------------------\n");
 
 int option = -1;
 int created = 0;
@@ -154,7 +156,12 @@ while (1){
 			gsl_vector_set(inputVector, count,input);
 			count++;
 		}
-		forwardPropagate(inputVector, weightPtrs,a, z, nodeCountArray, layerCount);
+		gsl_vector* v = forwardPropagate(inputVector, weightPtrs,a, z, nodeCountArray, layerCount);
+		gsl_vector_free(v);
+		for (int i = 1; i <= layerCount; i++){
+			gsl_vector_free(a[i]);
+			gsl_vector_free(z[i]);
+		}
 	}
 	else if (option == 3){
 		double learningRate;
@@ -211,6 +218,7 @@ while (1){
 				gsl_vector* outputVector = forwardPropagate(batchInput[j], weightPtrs, a, z, nodeCountArray, layerCount);
 				double MSE = backPropagate(outputVector, batchExpected[j],weightPtrs, a, z, nodeCountArray, learningRate,layerCount);
 				printf("EPOCH: %d,BATCH: %d, Mean Squared Error: %lf\n",i,j+1,MSE);
+				gsl_vector_free(outputVector);
 			}
 		i++;
 		}
@@ -323,13 +331,15 @@ gsl_vector* forwardPropagate(gsl_vector* inputVector, gsl_matrix** weightPtrs, g
 		gsl_vector_memcpy(v2, v1);
 		gsl_vector_free(v1);
 	}
-		
+			
 	printf("Output: [");
-
+	
 	// Output value of last layer of neurons
 	for (int i = 0; i < nodeCountArray[layers]; i++){
 		printf("%lf ",gsl_vector_get(v2,i));
 	}
+	
+	
 	printf("]\n");
 	return v2;
 }
@@ -384,10 +394,15 @@ double backPropagate(gsl_vector* inputVector, gsl_vector* outputVector ,gsl_matr
 	gsl_vector_free(prevDerivLayer);
 	gsl_vector_free(derivLayer);
 	gsl_vector_free(differenceLayer);
+
+	gsl_vector_free(z[0]);
+		
 	// Compute new weights	
 	for (int l = 1; l <= layer; l++){
 		gsl_matrix_sub(weightPtrs[l],offsetMatrix[l]);
 		gsl_matrix_free(offsetMatrix[l]);
+		gsl_vector_free(a[l]);
+		gsl_vector_free(z[l]);
 	}
 
 	return MSE;
