@@ -7,6 +7,11 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+
+#include "neuralnet_activations.h"
+
+int activation;
+
 // Helper functions
 
 
@@ -17,40 +22,17 @@ void clear_buffer(FILE* f){
                 }
 
 }
-double sigmoidI(double v){
-	double x = pow(M_E, v);
-	return x/(1+x);
-}
 
-double transfer_derivative(double v){;
-	return v*(1.0-v);
-}
-gsl_vector* sigmoid(gsl_vector* a, int count){
-	//gsl_vector* result = gsl_vector_calloc(count);
-	for (int i = 0; i < count; i++){
-		double x = pow(M_E,gsl_vector_get(a,i));
-		gsl_vector_set(a,i,x/(1+x));
-	}
-	return a;
-}
 
-gsl_vector* RELU(gsl_vector* a, int count){
-	gsl_vector* result = gsl_vector_calloc(count);
-	for (int i = 0; i < count; i++){
-		double x = gsl_vector_get(a,i);
-		if (x >= 0){
-			gsl_vector_set(result, i,x);
-		}
-	}
-	return result;
-}
+
 
 gsl_vector* forwardPropagate(gsl_vector* inputVector, gsl_matrix** weightPtrs, gsl_vector** a, gsl_vector** z,int* nodeCountArray, int layers);
-double backPropagate(gsl_vector* inputVector, gsl_vector* outputVector, gsl_matrix** weightPtrs, gsl_vector** a, gsl_vector** z,int* nodeCountArray, double learningRate,int layer);
+double backPropagate(gsl_vector* inputVector, gsl_vector* outputVector, gsl_matrix** weightPtrs, gsl_vector** a,gsl_vector** z,int* nodeCountArray, double learningRate,int regularizationMask,double alpha,double beta,int layer);
 
 int main(){
 
 srand(time(0));
+
 int nodeCountArray[100];
 gsl_matrix* weightPtrs[100];
 gsl_vector* a[100];
@@ -80,12 +62,29 @@ while (1){
 				gsl_vector_free(z[i]);
 			}
 		}
+
+		int flag = 0;
 		memset(nodeCountArray, 0, sizeof(int) * 100);
 		memset(weightPtrs, 0, sizeof(gsl_matrix*) * 100);
 		memset(a, 0, sizeof(gsl_vector*) * 100);
 		memset(z, 0, sizeof(gsl_vector*) * 100);
 		
-		int flag = 0;
+		puts("Activation functions: ");
+		puts("1. Sigmoid");
+		puts("2. RELU");
+		puts("3. tanh");
+		
+		while (1){
+		printf("Enter activation function: ");		
+		scanf("%d", &activation);
+		activation--;
+			if (activation < 0 || activation >= ACTIVATION_TABLE_SIZE){
+				puts("Invalid activation function!");
+			}
+			else{
+				break;
+			}
+		}
 		while (!flag){
 		printf("Input number of nodes: ");
 		scanf("%d",nodeCountArray);
@@ -167,6 +166,9 @@ while (1){
 		double learningRate;
 		int epoch;
 		int batchCount;
+		int regularization;
+		
+		double alpha, beta;
 		if(layerCount == 0){
 			puts("Neural Network Uninitialized");
 			continue;
@@ -207,16 +209,35 @@ while (1){
                         count++;
                 }
 		}
+
 		printf("Enter learning rate: ");
 		scanf("%lf",&learningRate);
 		
 		printf("Enter epoch count: ");
 		scanf("%d",&epoch);
+
+		printf("Apply regularization? (0: None, 1: L1, 2: L2, 3: Both): ");
+		scanf("%d",&regularization);
+		
+		if (regularization & 1){
+			printf("Set L1 regularization constant: ");
+			scanf("%lf", &alpha);
+		}else{
+			alpha = 0.0;
+		}
+		
+		if (regularization & 2){
+			printf("Set L2 regularization constant: ");
+			scanf("%lf", &beta);
+		}else{
+			beta = 0.0;
+		}
+
 		int i = 1;
 		while (i <= epoch){
 			for (int j = 0; j < batchCount; j++){
 				gsl_vector* outputVector = forwardPropagate(batchInput[j], weightPtrs, a, z, nodeCountArray, layerCount);
-				double MSE = backPropagate(outputVector, batchExpected[j],weightPtrs, a, z, nodeCountArray, learningRate,layerCount);
+				double MSE = backPropagate(outputVector, batchExpected[j],weightPtrs, a, z,nodeCountArray, learningRate,regularization,alpha,beta,layerCount);
 				printf("EPOCH: %d,BATCH: %d, Mean Squared Error: %lf\n",i,j+1,MSE);
 				gsl_vector_free(outputVector);
 			}
@@ -248,6 +269,7 @@ while (1){
 			
 		puts("Writing to file..");
 		fwrite(&layerCount, sizeof(int), 1, FH);
+		fwrite(&activation, sizeof(int), 1, FH);
 		fwrite(nodeCountArray, sizeof(int), 100, FH);
 		
 		int layers = 0;
@@ -281,6 +303,7 @@ while (1){
 		
 		int prevLayerCount = layerCount;
 		fread(&layerCount, sizeof(int), 1, FH);
+		fread(&activation, sizeof(int), 1, FH);
 		fread(nodeCountArray,sizeof(int),100,FH);
 		created = 1;	
 
@@ -320,7 +343,7 @@ gsl_vector* forwardPropagate(gsl_vector* inputVector, gsl_matrix** weightPtrs, g
 		a[i] = gsl_vector_calloc(nodeCountArray[i]);
                 gsl_vector_memcpy(a[i], v1);
 		
-		v1 = sigmoid(v1,nodeCountArray[i]);
+		activation_V[activation](v1);
 
 		z[i] = gsl_vector_calloc(nodeCountArray[i]);
 		gsl_vector_memcpy(z[i], v1);
@@ -344,7 +367,7 @@ gsl_vector* forwardPropagate(gsl_vector* inputVector, gsl_matrix** weightPtrs, g
 	return v2;
 }
 
-double backPropagate(gsl_vector* inputVector, gsl_vector* outputVector ,gsl_matrix** weightPtrs, gsl_vector** a, gsl_vector** z,int* nodeCountArray,double learningRate, int layer){
+double backPropagate(gsl_vector* inputVector, gsl_vector* outputVector ,gsl_matrix** weightPtrs, gsl_vector** a,gsl_vector** z,int* nodeCountArray,double learningRate, int regularizationMask, double alpha ,double beta,int layer){
 // Backpropagate first layer
 
 	gsl_vector *derivLayer = gsl_vector_calloc(nodeCountArray[layer-1]);
@@ -363,7 +386,7 @@ double backPropagate(gsl_vector* inputVector, gsl_vector* outputVector ,gsl_matr
 	}	
 	MSE /= nodeCountArray[layer];
 	for (int i = 0; i < nodeCountArray[layer]; i++){
-		double t = transfer_derivative(gsl_vector_get(z[layer], i)) * (gsl_vector_get(differenceLayer,i)); 
+		double t = activation_derivatives[activation](gsl_vector_get(a[layer], i)) * (gsl_vector_get(differenceLayer,i)); 
 		gsl_vector_set(prevDerivLayer, i,t);
 	}
 
@@ -373,7 +396,7 @@ double backPropagate(gsl_vector* inputVector, gsl_vector* outputVector ,gsl_matr
 		for (int i = 0; i < nodeCountArray[l]; i++){
 			double k = 0.0;
 			for (int j = 0; j < nodeCountArray[l+1]; j++){
-				k += gsl_vector_get(prevDerivLayer, j) * transfer_derivative(gsl_vector_get(z[l],i)) * gsl_matrix_get(weightPtrs[l+1],j,i);
+				k += gsl_vector_get(prevDerivLayer, j) * activation_derivatives[activation](gsl_vector_get(a[l],i)) * gsl_matrix_get(weightPtrs[l+1],j,i);
 			}
 			gsl_vector_set(derivLayer,i,k);
 		}
@@ -398,7 +421,25 @@ double backPropagate(gsl_vector* inputVector, gsl_vector* outputVector ,gsl_matr
 	gsl_vector_free(z[0]);
 		
 	// Compute new weights	
+	
 	for (int l = 1; l <= layer; l++){
+		if (regularizationMask & 1){
+			puts("L1");
+			gsl_matrix* L1 = gsl_matrix_calloc(weightPtrs[l]->size1, weightPtrs[l]->size2);
+			gsl_matrix_set_all(L1,alpha);
+		
+			gsl_matrix_sub(weightPtrs[l], L1);
+			gsl_matrix_free(L1);
+		}
+		if (regularizationMask & 2){
+			puts("L2");
+			gsl_matrix* L2 = gsl_matrix_calloc(weightPtrs[l]->size1, weightPtrs[l]->size2);
+			gsl_matrix_memcpy(L2, weightPtrs[l]);
+			gsl_matrix_scale(L2, beta);
+	
+			gsl_matrix_sub(weightPtrs[l], L2);
+			gsl_matrix_free(L2);
+		}
 		gsl_matrix_sub(weightPtrs[l],offsetMatrix[l]);
 		gsl_matrix_free(offsetMatrix[l]);
 		gsl_vector_free(a[l]);
