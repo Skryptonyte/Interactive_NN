@@ -9,7 +9,8 @@ The program uses matrix operations powered by [GNU Scientific Library](https://w
 
 * Latest version of GNU Scientific Library
 * Recent version of GCC/Clang/MSVC
+* MathGL 2.2.4
 
 ## Compiling
 
-``` gcc neuralnet.c -lgsl -lcblas -lm -o neuralnet.out ```
+``` gcc neuralnet.c -lgsl -lcblas -lm -lmgl2 -o neuralnet.out ```

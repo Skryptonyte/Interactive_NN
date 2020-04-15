@@ -1,6 +1,9 @@
+#include <stdbool.h>
+
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_blas.h>
+#include <mgl2/mgl_cf.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,7 +29,7 @@ void clear_buffer(FILE* f){
 
 
 
-gsl_vector* forwardPropagate(gsl_vector* inputVector, gsl_matrix** weightPtrs, gsl_vector** a, gsl_vector** z,int* nodeCountArray, int layers);
+gsl_vector* forwardPropagate(gsl_vector* inputVector, gsl_matrix** weightPtrs, gsl_vector** a, gsl_vector** z,int* nodeCountArray, int layers, bool training);
 double backPropagate(gsl_vector* inputVector, gsl_vector* outputVector, gsl_matrix** weightPtrs, gsl_vector** a,gsl_vector** z,int* nodeCountArray, double learningRate,int regularizationMask,double alpha,double beta,int layer);
 
 int main(){
@@ -155,7 +158,7 @@ while (1){
 			gsl_vector_set(inputVector, count,input);
 			count++;
 		}
-		gsl_vector* v = forwardPropagate(inputVector, weightPtrs,a, z, nodeCountArray, layerCount);
+		gsl_vector* v = forwardPropagate(inputVector, weightPtrs,a, z, nodeCountArray, layerCount, false);
 		gsl_vector_free(v);
 		for (int i = 1; i <= layerCount; i++){
 			gsl_vector_free(a[i]);
@@ -184,8 +187,8 @@ while (1){
 		printf("Enter number of batches: ");
 		scanf("%d",&batchCount);
 		
-		batchInput = malloc(sizeof(gsl_vector*) * batchCount);
-		batchExpected = malloc(sizeof(gsl_vector*)* batchCount);
+		batchInput = (gsl_vector** ) malloc(sizeof(gsl_vector*) * batchCount);
+		batchExpected = (gsl_vector** )malloc(sizeof(gsl_vector*)* batchCount);
 		
 		// Recieve Batch Data
 		for (int i = 0; i < batchCount; i++){
@@ -234,15 +237,60 @@ while (1){
 		}
 
 		int i = 1;
+
+		HMGL gr = mgl_create_graph(1980, 720);
+		mgl_set_range_val(gr,'x',0.0, (float) epoch);
+		mgl_set_range_val(gr, 'y', 0.0, 1.0);	
+		
+		mgl_title(gr,"Cost Function",NULL,10);
+                mgl_axis(gr,"xy", false, false);	
+
+		mgl_label(gr,'x',"Epochs",0,"");
+		mgl_label(gr,'y',"Cost",0,"");
+		HMDT xd =  mgl_create_data(epoch,1,1);
+		HMDT yd = mgl_create_data(epoch,1,1);
+		HMDT zd = mgl_create_data(epoch,1,1);
+		
+		double* X = (double* ) calloc(epoch, sizeof(double));
+		double* Y = (double* ) calloc(epoch, sizeof(double));
+		double* Z = (double* )calloc(epoch, sizeof(double));
+		puts("Training..");
+		time_t t = time(0);
 		while (i <= epoch){
+			double MSE_avg = 0.0;
 			for (int j = 0; j < batchCount; j++){
-				gsl_vector* outputVector = forwardPropagate(batchInput[j], weightPtrs, a, z, nodeCountArray, layerCount);
+				gsl_vector* outputVector = forwardPropagate(batchInput[j], weightPtrs, a, z, nodeCountArray, layerCount,true);
 				double MSE = backPropagate(outputVector, batchExpected[j],weightPtrs, a, z,nodeCountArray, learningRate,regularization,alpha,beta,layerCount);
-				printf("EPOCH: %d,BATCH: %d, Mean Squared Error: %lf\n",i,j+1,MSE);
+//				printf("EPOCH: %d,BATCH: %d, Mean Squared Error: %lf\n",i,j+1,MSE);
 				gsl_vector_free(outputVector);
+				MSE_avg += MSE;
 			}
+			MSE_avg /= batchCount;
+			
+			X[i-1] = (float) i;
+			Y[i-1] = MSE_avg;
+			Z[i-1] = 0.0;
 		i++;
 		}
+		printf("Training finished! Elapsed time (in seconds): %d\n",time(0) - t);
+		mgl_data_set_double(xd,X, epoch, 1, 1);
+		mgl_data_set_double(yd,Y, epoch, 1, 1);
+		mgl_data_set_double(zd, Z, epoch,1,1);
+		
+				
+		mgl_dots(gr, xd, yd, zd,"kRryw","");
+		
+		puts("Writing graph to file cost.png");
+		mgl_write_frame(gr,"cost.png","");
+		
+		puts("Cleaning up");	
+		mgl_delete_graph(gr);
+		
+		free(X);
+		free(Y);
+		free(Z);
+		
+		
 	}
 	else if (option == 4){
 		if (layerCount == 0){
@@ -327,7 +375,7 @@ while (1){
 return 0;
 }
 
-gsl_vector* forwardPropagate(gsl_vector* inputVector, gsl_matrix** weightPtrs, gsl_vector** a, gsl_vector** z, int* nodeCountArray, int layers){
+gsl_vector* forwardPropagate(gsl_vector* inputVector, gsl_matrix** weightPtrs, gsl_vector** a, gsl_vector** z, int* nodeCountArray, int layers, bool training){
 	gsl_vector* v1 = NULL;
 	gsl_vector* v2 = gsl_vector_calloc(nodeCountArray[0]);
 	gsl_vector_memcpy(v2, inputVector);
@@ -354,16 +402,17 @@ gsl_vector* forwardPropagate(gsl_vector* inputVector, gsl_matrix** weightPtrs, g
 		gsl_vector_memcpy(v2, v1);
 		gsl_vector_free(v1);
 	}
-			
+	
+	if (!training){		
 	printf("Output: [");
 	
-	// Output value of last layer of neurons
-	for (int i = 0; i < nodeCountArray[layers]; i++){
-		printf("%lf ",gsl_vector_get(v2,i));
-	}
-	
-	
+	 //Output value of last layer of neurons
+		for (int i = 0; i < nodeCountArray[layers]; i++){
+			printf("%lf ",gsl_vector_get(v2,i));
+		}
+		
 	printf("]\n");
+	}
 	return v2;
 }
 
@@ -424,7 +473,6 @@ double backPropagate(gsl_vector* inputVector, gsl_vector* outputVector ,gsl_matr
 	
 	for (int l = 1; l <= layer; l++){
 		if (regularizationMask & 1){
-			puts("L1");
 			gsl_matrix* L1 = gsl_matrix_calloc(weightPtrs[l]->size1, weightPtrs[l]->size2);
 			gsl_matrix_set_all(L1,alpha);
 		
@@ -432,7 +480,6 @@ double backPropagate(gsl_vector* inputVector, gsl_vector* outputVector ,gsl_matr
 			gsl_matrix_free(L1);
 		}
 		if (regularizationMask & 2){
-			puts("L2");
 			gsl_matrix* L2 = gsl_matrix_calloc(weightPtrs[l]->size1, weightPtrs[l]->size2);
 			gsl_matrix_memcpy(L2, weightPtrs[l]);
 			gsl_matrix_scale(L2, beta);
